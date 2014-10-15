@@ -37,13 +37,13 @@ static struct hrtimer hr_timer;
  * shown in sysfs as a debug helper.
 */
 struct pwm_desc {
-  unsigned int pulse;    // pulse width, in microseconds
-  unsigned int period;   // wave period, in microseconds 
-  unsigned int pulses;   // number of pwm pulses before stopping; -1 never stops, 0 stops immediately
+  unsigned int pulse;	 // pulse width, in microseconds
+  unsigned int period;	 // wave period, in microseconds 
+  unsigned int pulses;	 // number of pwm pulses before stopping; -1 never stops, 0 stops immediately
   unsigned long counter; // "interrupt" counter - counts each value toggle
-  int value;             // current GPIO pin value (0 or 1 only)
-  ktime_t next_tick;     // timer tick at which next toggling should happen
-  unsigned long flags;   // only FLAG_SOFTPWM is used, for synchronizing inside module
+  int value;		 // current GPIO pin value (0 or 1 only)
+  ktime_t next_tick;	 // timer tick at which next toggling should happen
+  unsigned long flags;	 // only FLAG_SOFTPWM is used, for synchronizing inside module
 #define FLAG_SOFTPWM 0
 };
 
@@ -60,7 +60,7 @@ static struct pwm_desc pwm_table[ARCH_NR_GPIOS];
  */
 static DEFINE_MUTEX(sysfs_lock);
 
-int pwm_export(unsigned gpio);   // forward definition
+int pwm_export(unsigned gpio);	 // forward definition
 int pwm_unexport(unsigned gpio); // forward definition
 
 /* Show attribute values for PWMs */
@@ -101,14 +101,14 @@ static ssize_t pwm_store(
     status = strict_strtoul(buf, 0, &value);
     if(status==0){
       if(strcmp(attr->attr.name, "pulse")==0){
-        if(value<=desc->period){ desc->pulse = (unsigned int)value; }
+	if(value<=desc->period){ desc->pulse = (unsigned int)value; }
       }else if(strcmp(attr->attr.name, "period")==0){
-        desc->period = (unsigned int)value;
+	desc->period = (unsigned int)value;
       }else if(strcmp(attr->attr.name, "pulses")==0){
        if (value>0)
-         desc->pulses = (unsigned int)value*2;
+	 desc->pulses = (unsigned int)value*2;
        else 
-        desc->pulses = (unsigned int)value;
+	desc->pulses = (unsigned int)value;
       }
       desc->next_tick = ktime_get();
       //printk(KERN_INFO "Starting timer (%s).\n", attr->attr.name);
@@ -193,8 +193,8 @@ static struct class_attribute soft_pwm_class_attrs[] = {
    __ATTR_NULL,
 };
 static struct class soft_pwm_class = {
-  .name =        "soft_pwm",
-  .owner =       THIS_MODULE,
+  .name =	 "soft_pwm",
+  .owner =	 THIS_MODULE,
   .class_attrs = soft_pwm_class_attrs,
 };
 
@@ -202,7 +202,7 @@ static struct class soft_pwm_class = {
 int pwm_export(unsigned gpio){
   struct pwm_desc *desc;
   struct device   *dev;
-  int             status;
+  int		  status;
 
   mutex_lock(&sysfs_lock);
 
@@ -210,6 +210,14 @@ int pwm_export(unsigned gpio){
   desc->value  = 0;
   desc->pulses = -1;
   dev = device_create(&soft_pwm_class, NULL, MKDEV(0, 0), desc, "pwm%d", gpio);
+
+	if (!gpio_is_valid(gpio))
+		return -EINVAL;
+
+  status = gpio_direction_output(gpio, 1); /* What is the second argument? */
+  if (status < 0)
+	  return status;
+
   if(dev){
     status = sysfs_create_group(&dev->kobj, &soft_pwm_dev_attr_group);
     if(status==0){
@@ -228,7 +236,7 @@ int pwm_export(unsigned gpio){
 }
 
 /* Used by pwm_unexport below to find the device which should be freed */
-static int match_export(struct device *dev, void *data){
+static int match_export(struct device *dev, const void *data){
   return dev_get_drvdata(dev) == data;
 }
 
@@ -236,7 +244,7 @@ static int match_export(struct device *dev, void *data){
 int pwm_unexport(unsigned gpio){
   struct pwm_desc *desc;
   struct device   *dev;
-  int             status;
+  int		  status;
       
   mutex_lock(&sysfs_lock);
 
@@ -277,21 +285,21 @@ enum hrtimer_restart soft_pwm_hrtimer_callback(struct hrtimer *timer){
       (desc->pulses!=0)
     ){
       if(desc->next_tick.tv64<=now.tv64){
-        desc->value = 1-desc->value;
-        __gpio_set_value(gpio,desc->value);
-        desc->counter++;
-        if(desc->pulses>0){ desc->pulses--; }
-        if((desc->pulse==0)||(desc->pulse==desc->period)||(desc->pulses==0)){
-          desc->next_tick.tv64 = KTIME_MAX;
-        }else{
-          desc->next_tick=ktime_add_ns(
-            desc->next_tick,
-            (desc->value? desc->pulse : desc->period-desc->pulse)*1000
-          );
-        }
+	desc->value = 1-desc->value;
+	gpio_set_value(gpio,desc->value);
+	desc->counter++;
+	if(desc->pulses>0){ desc->pulses--; }
+	if((desc->pulse==0)||(desc->pulse==desc->period)||(desc->pulses==0)){
+	  desc->next_tick.tv64 = KTIME_MAX;
+	}else{
+	  desc->next_tick=ktime_add_ns(
+	    desc->next_tick,
+	    (desc->value? desc->pulse : desc->period-desc->pulse)*1000
+	  );
+	}
       }
       if((next_tick.tv64==0)||(desc->next_tick.tv64<next_tick.tv64)){
-        next_tick.tv64 = desc->next_tick.tv64;
+	next_tick.tv64 = desc->next_tick.tv64;
       }
     }
   }
@@ -338,7 +346,7 @@ static void __exit soft_pwm_exit(void){
     struct pwm_desc *desc;
     desc = &pwm_table[gpio];
     if(test_bit(FLAG_SOFTPWM,&desc->flags)){
-      __gpio_set_value(gpio,0);
+      gpio_set_value(gpio,0);
       status = pwm_unexport(gpio);
       if(status==0){ gpio_free(gpio); }
     }
