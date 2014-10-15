@@ -74,16 +74,16 @@ static ssize_t pwm_show(struct device *dev, struct device_attribute *attr,
 	ssize_t status;
 
 	mutex_lock(&sysfs_lock);
-	if (!test_bit(FLAG_SOFTPWM, &desc->flags))
+	if (!test_bit(FLAG_SOFTPWM, &desc->flags)) {
 		status = -EIO;
 	} else {
-		if (strcmp(attr->attr.name, "pulse")==0) {
+		if (!strcmp(attr->attr.name, "pulse")) {
 			status = sprintf(buf, "%d usec\n", desc->pulse);
-		} else if (strcmp(attr->attr.name, "period")==0) {
+		} else if (!strcmp(attr->attr.name, "period")) {
 			status = sprintf(buf, "%d usec\n", desc->period);
-		} else if (strcmp(attr->attr.name, "pulses")==0) {
-			status = sprintf(buf, "%d usec\n", desc->pulses);
-		} else if (strcmp(attr->attr.name, "counter")==0) {
+		} else if (!strcmp(attr->attr.name, "pulses")) {
+			status = sprintf(buf, "%d\n", desc->pulses);
+		} else if (!strcmp(attr->attr.name, "counter")) {
 			status = sprintf(buf, "%lu\n", desc->counter);
 		} else status = -EIO;
 	}
@@ -276,6 +276,8 @@ int pwm_unexport(unsigned gpio){
 	return status;
 }
 
+/* THIS CODE IS BUGGED ! */
+
 /* The timer callback is called only when needed (which is to
  * say, at the earliest PWM signal toggling time) in order to
  * maintain the pressure on system latency as low as possible
@@ -292,19 +294,21 @@ enum hrtimer_restart soft_pwm_hrtimer_callback(struct hrtimer *timer) {
 	/* FIXME: This is horribly inefficient -- obd */
 	for (gpio = 0; gpio < ARCH_NR_GPIOS; gpio++){
 		desc = &pwm_table[gpio];
-		if (!(test_bit(FLAG_SOFTPWM,&desc->flags) &&
-			(desc->period > 0) &&
-			(desc->pulse <= desc->period) &&
-			(desc->pulses != 0)))
+		if (!(test_bit(FLAG_SOFTPWM,&desc->flags &&
+			desc->period > 0 &&
+			desc->pulse <= desc->period &&
+			desc->pulses != 0)))
 			continue;
 	
 		if (desc->next_tick.tv64 <= now.tv64) {
-			desc->value = 1-desc->value;
-			gpio_set_value(gpio,desc->value);
-			desc->counter++;
+			desc->value = 1 - desc->value;
+			gpio_set_value(gpio, desc->value);
 
-			if(desc->pulses > 0) desc->pulses--;
-			if(desc->pulse == 0 ||
+			desc->counter ++;
+
+			if (desc->pulses > 0) desc->pulses--;
+
+			if (desc->pulse == 0 ||
 				desc->pulse == desc->period ||
 				desc->pulses == 0)
 				desc->next_tick.tv64 = KTIME_MAX;
@@ -318,7 +322,7 @@ enum hrtimer_restart soft_pwm_hrtimer_callback(struct hrtimer *timer) {
 						t * 1000);
 			}
 		}
-		if (next_tick.tv64==0 ||
+		if (next_tick.tv64 == 0 ||
 			desc->next_tick.tv64 < next_tick.tv64) {
 			next_tick.tv64 = desc->next_tick.tv64;
 		}
@@ -327,7 +331,7 @@ enum hrtimer_restart soft_pwm_hrtimer_callback(struct hrtimer *timer) {
 	if (next_tick.tv64 > 0) {
 		hrtimer_start(&hr_timer, next_tick, HRTIMER_MODE_ABS);
 	} else {
-		/* printk(KERN_INFO "Stopping timer.\n"); */
+		printk(KERN_INFO "Stopping timer.\n");
 	}
 
 	return HRTIMER_NORESTART;
