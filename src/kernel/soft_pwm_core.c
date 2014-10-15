@@ -43,11 +43,13 @@ struct pwm_desc {
 	unsigned long counter;	/* "Interrupt" counter - counts each value
 				   toggle */
 	int value;		/* Current GPIO pin value (0 or 1 only) */
+	int last_value;
 	ktime_t next_tick;	/* Timer tick at which next toggling should
 				   happen */
 	unsigned long flags;	/* Only FLAG_SOFTPWM is used, for synchronizing
 				   inside module */
 #define FLAG_SOFTPWM 0
+#define FLAG_STATE_SET 1
 };
 
 /* pwm_table
@@ -294,15 +296,14 @@ enum hrtimer_restart soft_pwm_hrtimer_callback(struct hrtimer *timer) {
 	/* FIXME: This is horribly inefficient -- obd */
 	for (gpio = 0; gpio < ARCH_NR_GPIOS; gpio++){
 		desc = &pwm_table[gpio];
-		if (!(test_bit(FLAG_SOFTPWM,&desc->flags &&
+		if (!(test_bit(FLAG_SOFTPWM, &desc->flags) &&
 			desc->period > 0 &&
 			desc->pulse <= desc->period &&
-			desc->pulses != 0)))
-			continue;
+			desc->pulses != 0))
+			goto next;
 	
 		if (desc->next_tick.tv64 <= now.tv64) {
 			desc->value = 1 - desc->value;
-			gpio_set_value(gpio, desc->value);
 
 			desc->counter ++;
 
@@ -316,23 +317,25 @@ enum hrtimer_restart soft_pwm_hrtimer_callback(struct hrtimer *timer) {
 				t = desc->value ?
 					desc->pulse :
 					desc->period - desc->pulse;
-				desc->next_tick =
-					ktime_add_ns(
-						desc->next_tick,
-						t * 1000);
+				desc->next_tick = ktime_add_ns(now, t * 1000);
 			}
 		}
 		if (next_tick.tv64 == 0 ||
 			desc->next_tick.tv64 < next_tick.tv64) {
 			next_tick.tv64 = desc->next_tick.tv64;
 		}
-	
+
+next:
+		if (desc->value != desc->last_value) {
+			gpio_set_value(gpio, desc->value);
+			desc->last_value = desc->value;
+		}
 	}
-	if (next_tick.tv64 > 0) {
+
+	if (next_tick.tv64 > 0)
 		hrtimer_start(&hr_timer, next_tick, HRTIMER_MODE_ABS);
-	} else {
+	else
 		printk(KERN_INFO "Stopping timer.\n");
-	}
 
 	return HRTIMER_NORESTART;
 }
