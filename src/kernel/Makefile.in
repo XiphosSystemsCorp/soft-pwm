@@ -6,7 +6,7 @@ targets=soft_pwm.ko
 .PHONY: all
 all: $(targets)
 
-soft_pwm_SOURCES = soft_pwm_core.c soft_pwm_core.c 
+soft_pwm_SOURCES = soft_pwm_core.c
 
 soft_pwm.ko: $(soft_pwm_SOURCES)
 	$(invoke)
