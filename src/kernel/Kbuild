@@ -1,0 +1,2 @@
+obj-m := soft_pwm_core.o
+soft_pwm-y := soft_pwm_core.o
