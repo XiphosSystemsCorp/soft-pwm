@@ -161,7 +161,7 @@ static ssize_t export_store(struct class *class, struct class_attribute *attr,
 	status = gpio_request(gpio, "soft_pwm");
 	if (status < 0) goto done;
 
-	status = gpio_direction_output(gpio, 1);
+	status = gpio_direction_output(gpio, 0);
 	if (status < 0) goto done;
 
 	status = pwm_export(gpio);
@@ -225,6 +225,7 @@ int pwm_export(unsigned gpio) {
 	desc = &pwm_table[gpio];
 	desc->value  = 0;
 	desc->pulses = -1;
+	desc->last_value = -1;
 	dev = device_create(&soft_pwm_class, NULL, MKDEV(0, 0), desc,
 		"pwm%d", gpio);
 
@@ -301,28 +302,35 @@ enum hrtimer_restart soft_pwm_hrtimer_callback(struct hrtimer *timer) {
 			desc->pulse <= desc->period &&
 			desc->pulses != 0))
 			goto next;
-	
-		if (desc->next_tick.tv64 <= now.tv64) {
-			desc->value = 1 - desc->value;
 
-			desc->counter ++;
+		if (desc->pulse == 0)
+			desc->value = 0;
+		else if (desc->pulse >= desc->period)
+			desc->value = 1;
+		else {
+			if (desc->next_tick.tv64 <= now.tv64) {
+				desc->value = 1 - desc->value;
 
-			if (desc->pulses > 0) desc->pulses--;
+				desc->counter ++;
 
-			if (desc->pulse == 0 ||
-				desc->pulse == desc->period ||
-				desc->pulses == 0)
-				desc->next_tick.tv64 = KTIME_MAX;
-			else {
-				t = desc->value ?
-					desc->pulse :
-					desc->period - desc->pulse;
-				desc->next_tick = ktime_add_ns(now, t * 1000);
+				if (desc->pulses > 0) desc->pulses--;
+
+				if (desc->pulse == 0 ||
+					desc->pulse == desc->period ||
+					desc->pulses == 0) {
+					desc->next_tick.tv64 = KTIME_MAX;
+				} else {
+					t = desc->value ?
+						desc->pulse :
+						desc->period - desc->pulse;
+					desc->next_tick = ktime_add_ns(now,
+						t * 1000);
+				}
 			}
-		}
-		if (next_tick.tv64 == 0 ||
-			desc->next_tick.tv64 < next_tick.tv64) {
-			next_tick.tv64 = desc->next_tick.tv64;
+			if (next_tick.tv64 == 0 ||
+				desc->next_tick.tv64 < next_tick.tv64) {
+				next_tick.tv64 = desc->next_tick.tv64;
+			}
 		}
 
 next:
@@ -334,8 +342,6 @@ next:
 
 	if (next_tick.tv64 > 0)
 		hrtimer_start(&hr_timer, next_tick, HRTIMER_MODE_ABS);
-	else
-		printk(KERN_INFO "Stopping timer.\n");
 
 	return HRTIMER_NORESTART;
 }
